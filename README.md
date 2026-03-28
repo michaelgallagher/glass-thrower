@@ -6,7 +6,7 @@ An Obsidian plugin that lets you toggle the left sidebar with two-finger trackpa
 
 ### Manual install
 
-1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/yourusername/glass-thrower/releases).
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/michaelgallagher/glass-thrower/releases).
 2. Create a folder called `glass-thrower` inside your vault's `.obsidian/plugins/` directory.
 3. Copy the three files into that folder.
 4. Open Obsidian Settings > Community plugins and enable **Glass Thrower**.
@@ -15,7 +15,7 @@ An Obsidian plugin that lets you toggle the left sidebar with two-finger trackpa
 
 1. Clone this repo into your vault's `.obsidian/plugins/` directory (or anywhere you like):
    ```sh
-   git clone https://github.com/yourusername/glass-thrower.git
+   git clone https://github.com/michaelgallagher/glass-thrower.git
    cd glass-thrower
    ```
 2. Install dependencies and build:
