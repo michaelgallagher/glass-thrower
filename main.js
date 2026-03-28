@@ -146,6 +146,9 @@ var SwipeSidebarSettingTab = class extends import_obsidian.PluginSettingTab {
 // src/main.ts
 var ANIMATION_CLASS = "swipe-sidebar-animating";
 var CSS_VAR_DURATION = "--swipe-sidebar-duration";
+function easeStandard(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
 function getElectronWindow() {
   var _a, _b;
   try {
@@ -253,8 +256,10 @@ var SwipeSidebarPlugin = class extends import_obsidian2.Plugin {
     if (direction === "collapse") {
       this.savedSidebarWidth = originalSidebarWidth;
     }
+    const restoreWidth = (_a = this.savedSidebarWidth) != null ? _a : originalSidebarWidth;
     const win = getElectronWindow();
     const bounds = win == null ? void 0 : win.getBounds();
+    const duration = this.settings.animationDurationMs;
     sidebarEl.classList.add(ANIMATION_CLASS);
     document.body.classList.add(ANIMATION_CLASS);
     if (direction === "collapse") {
@@ -264,67 +269,43 @@ var SwipeSidebarPlugin = class extends import_obsidian2.Plugin {
     }
     if (win && bounds) {
       const startWindowWidth = bounds.width;
+      const startTime = performance.now();
       let rafId;
-      if (direction === "collapse") {
-        const syncFrame = () => {
-          const currentSidebarWidth = sidebarEl.offsetWidth;
-          const delta = originalSidebarWidth - currentSidebarWidth;
-          win.setBounds(
-            {
-              x: bounds.x,
-              y: bounds.y,
-              width: startWindowWidth - delta,
-              height: bounds.height
-            },
-            false
-          );
-          if (currentSidebarWidth > 0 && this.animating) {
-            rafId = requestAnimationFrame(syncFrame);
-          }
-        };
-        rafId = requestAnimationFrame(syncFrame);
-      } else {
-        const restoreWidth = (_a = this.savedSidebarWidth) != null ? _a : originalSidebarWidth;
-        const syncFrame = () => {
-          const currentSidebarWidth = sidebarEl.offsetWidth;
-          win.setBounds(
-            {
-              x: bounds.x,
-              y: bounds.y,
-              width: startWindowWidth + currentSidebarWidth,
-              height: bounds.height
-            },
-            false
-          );
-          if (currentSidebarWidth < restoreWidth && this.animating) {
-            rafId = requestAnimationFrame(syncFrame);
-          }
-        };
-        rafId = requestAnimationFrame(syncFrame);
-      }
-      const stopRaf = () => cancelAnimationFrame(rafId);
-      sidebarEl.addEventListener("transitionend", stopRaf, {
-        once: true
-      });
+      const syncFrame = () => {
+        const elapsed = performance.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = easeStandard(progress);
+        let targetWidth;
+        if (direction === "collapse") {
+          const sidebarDelta = originalSidebarWidth * eased;
+          targetWidth = startWindowWidth - sidebarDelta;
+        } else {
+          const sidebarCurrent = restoreWidth * eased;
+          targetWidth = startWindowWidth + sidebarCurrent;
+        }
+        win.setSize(
+          Math.round(targetWidth),
+          bounds.height
+        );
+        if (progress < 1 && this.animating) {
+          rafId = requestAnimationFrame(syncFrame);
+        }
+      };
+      rafId = requestAnimationFrame(syncFrame);
+      sidebarEl.addEventListener(
+        "transitionend",
+        () => cancelAnimationFrame(rafId),
+        { once: true }
+      );
     }
-    const duration = this.settings.animationDurationMs;
     const safetyTimeout = duration + 100;
     const cleanup = () => {
-      var _a2;
       sidebarEl.classList.remove(ANIMATION_CLASS);
       document.body.classList.remove(ANIMATION_CLASS);
       this.animating = false;
       if (win && bounds) {
-        const finalWidth = direction === "collapse" ? bounds.width - originalSidebarWidth : bounds.width + ((_a2 = this.savedSidebarWidth) != null ? _a2 : originalSidebarWidth);
-        win.setBounds(
-          {
-            x: bounds.x,
-            y: bounds.y,
-            width: finalWidth,
-            height: bounds.height
-          },
-          false
-        );
+        const finalWidth = direction === "collapse" ? bounds.width - originalSidebarWidth : bounds.width + restoreWidth;
+        win.setSize(Math.round(finalWidth), bounds.height);
       }
     };
     let cleaned = false;

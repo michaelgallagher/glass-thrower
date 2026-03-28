@@ -14,6 +14,16 @@ import {
 const ANIMATION_CLASS = "swipe-sidebar-animating";
 const CSS_VAR_DURATION = "--swipe-sidebar-duration";
 
+// Approximate cubic-bezier(0.4, 0, 0.2, 1) — Material Design standard easing.
+// Attempt to match the CSS transition curve so the window resize tracks it closely.
+function easeStandard(t: number): number {
+	// Simple cubic approximation that's close enough:
+	// fast start, slow finish — matches the bezier shape.
+	return t < 0.5
+		? 4 * t * t * t
+		: 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
 function getElectronWindow(): any | null {
 	try {
 		// eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -126,7 +136,6 @@ export default class SwipeSidebarPlugin extends Plugin {
 
 		const sidebarEl = this.getLeftSplitEl();
 		if (!sidebarEl) {
-			// Fallback: no animation, just toggle
 			if (direction === "collapse") {
 				leftSplit.collapse();
 			} else {
@@ -137,106 +146,85 @@ export default class SwipeSidebarPlugin extends Plugin {
 
 		this.animating = true;
 
-		// Measure sidebar width before collapsing
 		const originalSidebarWidth = sidebarEl.offsetWidth;
 		if (direction === "collapse") {
 			this.savedSidebarWidth = originalSidebarWidth;
 		}
+		const restoreWidth = this.savedSidebarWidth ?? originalSidebarWidth;
 
 		const win = getElectronWindow();
 		const bounds = win?.getBounds();
+		const duration = this.settings.animationDurationMs;
 
 		// Add animation classes for CSS transition on the sidebar
 		sidebarEl.classList.add(ANIMATION_CLASS);
 		document.body.classList.add(ANIMATION_CLASS);
 
-		// Trigger the collapse/expand — CSS transition will animate sidebar width
+		// Trigger the collapse/expand — CSS transition animates sidebar width
 		if (direction === "collapse") {
 			leftSplit.collapse();
 		} else {
 			leftSplit.expand();
 		}
 
-		// Drive window resize frame-by-frame in sync with the sidebar CSS transition.
-		// Each frame: measure the sidebar's current width, adjust window width so
-		// the editor pane never changes size.
+		// Drive window resize using a time-based easing curve that matches the
+		// CSS transition. This avoids reading offsetWidth (forced reflow) every
+		// frame — we calculate the expected sidebar width mathematically instead.
 		if (win && bounds) {
 			const startWindowWidth = bounds.width;
+			const startTime = performance.now();
 			let rafId: number;
 
-			if (direction === "collapse") {
-				const syncFrame = () => {
-					const currentSidebarWidth = sidebarEl.offsetWidth;
-					const delta = originalSidebarWidth - currentSidebarWidth;
-					win.setBounds(
-						{
-							x: bounds.x,
-							y: bounds.y,
-							width: startWindowWidth - delta,
-							height: bounds.height,
-						},
-						false
-					);
-					if (currentSidebarWidth > 0 && this.animating) {
-						rafId = requestAnimationFrame(syncFrame);
-					}
-				};
-				rafId = requestAnimationFrame(syncFrame);
-			} else {
-				const restoreWidth =
-					this.savedSidebarWidth ?? originalSidebarWidth;
-				const syncFrame = () => {
-					const currentSidebarWidth = sidebarEl.offsetWidth;
-					win.setBounds(
-						{
-							x: bounds.x,
-							y: bounds.y,
-							width: startWindowWidth + currentSidebarWidth,
-							height: bounds.height,
-						},
-						false
-					);
-					if (
-						currentSidebarWidth < restoreWidth &&
-						this.animating
-					) {
-						rafId = requestAnimationFrame(syncFrame);
-					}
-				};
-				rafId = requestAnimationFrame(syncFrame);
-			}
+			const syncFrame = () => {
+				const elapsed = performance.now() - startTime;
+				const progress = Math.min(elapsed / duration, 1);
+				const eased = easeStandard(progress);
 
-			// Stop rAF loop when animation ends
-			const stopRaf = () => cancelAnimationFrame(rafId);
-			sidebarEl.addEventListener("transitionend", stopRaf, {
-				once: true,
-			});
+				let targetWidth: number;
+				if (direction === "collapse") {
+					// Sidebar goes from originalSidebarWidth → 0
+					const sidebarDelta = originalSidebarWidth * eased;
+					targetWidth = startWindowWidth - sidebarDelta;
+				} else {
+					// Sidebar goes from 0 → restoreWidth
+					const sidebarCurrent = restoreWidth * eased;
+					targetWidth = startWindowWidth + sidebarCurrent;
+				}
+
+				win.setSize(
+					Math.round(targetWidth),
+					bounds.height
+				);
+
+				if (progress < 1 && this.animating) {
+					rafId = requestAnimationFrame(syncFrame);
+				}
+			};
+
+			rafId = requestAnimationFrame(syncFrame);
+
+			// Stop rAF loop when CSS transition ends (in case it fires before our loop finishes)
+			sidebarEl.addEventListener(
+				"transitionend",
+				() => cancelAnimationFrame(rafId),
+				{ once: true }
+			);
 		}
 
 		// Clean up after animation completes
-		const duration = this.settings.animationDurationMs;
 		const safetyTimeout = duration + 100;
 
 		const cleanup = () => {
 			sidebarEl.classList.remove(ANIMATION_CLASS);
 			document.body.classList.remove(ANIMATION_CLASS);
 			this.animating = false;
-			// Ensure final window size is exact
+			// Snap to exact final size
 			if (win && bounds) {
 				const finalWidth =
 					direction === "collapse"
 						? bounds.width - originalSidebarWidth
-						: bounds.width +
-							(this.savedSidebarWidth ?? originalSidebarWidth);
-				win.setBounds(
-					{
-						x: bounds.x,
-						y: bounds.y,
-						width: finalWidth,
-						height: bounds.height,
-					},
-					false
-				);
+						: bounds.width + restoreWidth;
+				win.setSize(Math.round(finalWidth), bounds.height);
 			}
 		};
 
