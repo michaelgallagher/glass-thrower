@@ -12,7 +12,7 @@ export interface SwipeSidebarSettings {
 export const DEFAULT_SETTINGS: SwipeSidebarSettings = {
 	enabled: true,
 	deltaXThreshold: 80,
-	animationDurationMs: 250,
+	animationDurationMs: 150,
 	horizontalRatio: 2.0,
 	cooldownMs: 600,
 };

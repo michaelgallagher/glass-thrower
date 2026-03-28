@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-glass-thrower",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Toggle the left sidebar with two-finger trackpad swipes",
 	"main": "main.js",
 	"scripts": {

@@ -1,9 +1,8 @@
 .workspace-split.mod-left-split.swipe-sidebar-animating {
-	transition: width var(--swipe-sidebar-duration, 250ms) cubic-bezier(0.4, 0, 0.2, 1),
-		max-width var(--swipe-sidebar-duration, 250ms) cubic-bezier(0.4, 0, 0.2, 1);
+	transition: width var(--swipe-sidebar-duration, 150ms) ease-out,
+		max-width var(--swipe-sidebar-duration, 150ms) ease-out;
 }
 
 body.swipe-sidebar-animating .workspace-split.mod-root {
-	transition: width var(--swipe-sidebar-duration, 250ms) cubic-bezier(0.4, 0, 0.2, 1),
-		margin-left var(--swipe-sidebar-duration, 250ms) cubic-bezier(0.4, 0, 0.2, 1);
+	transition: none;
 }

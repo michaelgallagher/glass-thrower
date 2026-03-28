@@ -41,7 +41,7 @@ A command palette action (**Toggle left sidebar (animated)**) is also available 
 |---|---|---|
 | Enable swipe gesture | On | Master on/off toggle |
 | Sensitivity | 80 | How much horizontal movement is needed to trigger (lower = more sensitive) |
-| Animation speed | 250ms | Duration of the slide animation |
+| Animation speed | 150ms | Duration of the slide animation |
 | Horizontal ratio | 2.0 | How horizontal the swipe must be vs vertical (higher = stricter) |
 | Cooldown | 600ms | Minimum time between consecutive triggers |
 

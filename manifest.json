@@ -1,7 +1,7 @@
 {
 	"id": "glass-thrower",
 	"name": "Glass Thrower",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"minAppVersion": "1.0.0",
 	"description": "Toggle the left sidebar with two-finger trackpad swipes, with smooth slide animation.",
 	"author": "Michael Gallagher",

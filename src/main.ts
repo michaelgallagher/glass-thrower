@@ -14,16 +14,6 @@ import {
 const ANIMATION_CLASS = "swipe-sidebar-animating";
 const CSS_VAR_DURATION = "--swipe-sidebar-duration";
 
-// Approximate cubic-bezier(0.4, 0, 0.2, 1) — Material Design standard easing.
-// Attempt to match the CSS transition curve so the window resize tracks it closely.
-function easeStandard(t: number): number {
-	// Simple cubic approximation that's close enough:
-	// fast start, slow finish — matches the bezier shape.
-	return t < 0.5
-		? 4 * t * t * t
-		: 1 - Math.pow(-2 * t + 2, 3) / 2;
-}
-
 function getElectronWindow(): any | null {
 	try {
 		// eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -135,6 +125,7 @@ export default class SwipeSidebarPlugin extends Plugin {
 		if (this.animating) return;
 
 		const sidebarEl = this.getLeftSplitEl();
+		const editorEl = this.getEditorEl();
 		if (!sidebarEl) {
 			if (direction === "collapse") {
 				leftSplit.collapse();
@@ -156,76 +147,59 @@ export default class SwipeSidebarPlugin extends Plugin {
 		const bounds = win?.getBounds();
 		const duration = this.settings.animationDurationMs;
 
-		// Add animation classes for CSS transition on the sidebar
+		// Clamp the editor pane so it never changes width during animation.
+		// This is the key to avoiding jitter — the editor stays rock-solid
+		// while only the sidebar and window size change.
+		if (editorEl) {
+			const editorWidth = editorEl.offsetWidth;
+			editorEl.style.minWidth = editorWidth + "px";
+			editorEl.style.maxWidth = editorWidth + "px";
+		}
+
+		if (direction === "expand" && win && bounds) {
+			// EXPAND: grow window instantly BEFORE the sidebar transition starts.
+			// The editor is clamped, so the extra space is just app background
+			// on the right. The sidebar then slides in and fills it.
+			win.setSize(
+				Math.round(bounds.width + restoreWidth),
+				bounds.height
+			);
+		}
+
+		// Add animation classes — CSS transition handles the sidebar slide
 		sidebarEl.classList.add(ANIMATION_CLASS);
 		document.body.classList.add(ANIMATION_CLASS);
 
-		// Trigger the collapse/expand — CSS transition animates sidebar width
+		// Trigger sidebar collapse/expand (CSS transition animates it)
 		if (direction === "collapse") {
 			leftSplit.collapse();
 		} else {
 			leftSplit.expand();
 		}
 
-		// Drive window resize using a time-based easing curve that matches the
-		// CSS transition. This avoids reading offsetWidth (forced reflow) every
-		// frame — we calculate the expected sidebar width mathematically instead.
-		if (win && bounds) {
-			const startWindowWidth = bounds.width;
-			const startTime = performance.now();
-			let rafId: number;
-
-			const syncFrame = () => {
-				const elapsed = performance.now() - startTime;
-				const progress = Math.min(elapsed / duration, 1);
-				const eased = easeStandard(progress);
-
-				let targetWidth: number;
-				if (direction === "collapse") {
-					// Sidebar goes from originalSidebarWidth → 0
-					const sidebarDelta = originalSidebarWidth * eased;
-					targetWidth = startWindowWidth - sidebarDelta;
-				} else {
-					// Sidebar goes from 0 → restoreWidth
-					const sidebarCurrent = restoreWidth * eased;
-					targetWidth = startWindowWidth + sidebarCurrent;
-				}
-
-				win.setSize(
-					Math.round(targetWidth),
-					bounds.height
-				);
-
-				if (progress < 1 && this.animating) {
-					rafId = requestAnimationFrame(syncFrame);
-				}
-			};
-
-			rafId = requestAnimationFrame(syncFrame);
-
-			// Stop rAF loop when CSS transition ends (in case it fires before our loop finishes)
-			sidebarEl.addEventListener(
-				"transitionend",
-				() => cancelAnimationFrame(rafId),
-				{ once: true }
-			);
-		}
-
-		// Clean up after animation completes
+		// Clean up after CSS transition completes
 		const safetyTimeout = duration + 100;
 
 		const cleanup = () => {
+			// COLLAPSE: shrink window instantly AFTER the sidebar transition ends.
+			// The sidebar is now gone, editor is clamped at original width,
+			// and there's empty space on the right. Snap it away.
+			if (direction === "collapse" && win && bounds) {
+				win.setSize(
+					Math.round(bounds.width - originalSidebarWidth),
+					bounds.height
+				);
+			}
+
+			// Remove editor clamp
+			if (editorEl) {
+				editorEl.style.minWidth = "";
+				editorEl.style.maxWidth = "";
+			}
+
 			sidebarEl.classList.remove(ANIMATION_CLASS);
 			document.body.classList.remove(ANIMATION_CLASS);
 			this.animating = false;
-			// Snap to exact final size
-			if (win && bounds) {
-				const finalWidth =
-					direction === "collapse"
-						? bounds.width - originalSidebarWidth
-						: bounds.width + restoreWidth;
-				win.setSize(Math.round(finalWidth), bounds.height);
-			}
 		};
 
 		let cleaned = false;
@@ -251,6 +225,12 @@ export default class SwipeSidebarPlugin extends Plugin {
 	private getLeftSplitEl(): HTMLElement | null {
 		return document.querySelector<HTMLElement>(
 			".workspace-split.mod-left-split"
+		);
+	}
+
+	private getEditorEl(): HTMLElement | null {
+		return document.querySelector<HTMLElement>(
+			".workspace-split.mod-root"
 		);
 	}
 }

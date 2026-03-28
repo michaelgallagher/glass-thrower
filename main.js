@@ -92,7 +92,7 @@ var import_obsidian = require("obsidian");
 var DEFAULT_SETTINGS = {
   enabled: true,
   deltaXThreshold: 80,
-  animationDurationMs: 250,
+  animationDurationMs: 150,
   horizontalRatio: 2,
   cooldownMs: 600
 };
@@ -146,9 +146,6 @@ var SwipeSidebarSettingTab = class extends import_obsidian.PluginSettingTab {
 // src/main.ts
 var ANIMATION_CLASS = "swipe-sidebar-animating";
 var CSS_VAR_DURATION = "--swipe-sidebar-duration";
-function easeStandard(t) {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-}
 function getElectronWindow() {
   var _a, _b;
   try {
@@ -243,6 +240,7 @@ var SwipeSidebarPlugin = class extends import_obsidian2.Plugin {
     if (direction === "expand" && !leftSplit.collapsed) return;
     if (this.animating) return;
     const sidebarEl = this.getLeftSplitEl();
+    const editorEl = this.getEditorEl();
     if (!sidebarEl) {
       if (direction === "collapse") {
         leftSplit.collapse();
@@ -260,6 +258,17 @@ var SwipeSidebarPlugin = class extends import_obsidian2.Plugin {
     const win = getElectronWindow();
     const bounds = win == null ? void 0 : win.getBounds();
     const duration = this.settings.animationDurationMs;
+    if (editorEl) {
+      const editorWidth = editorEl.offsetWidth;
+      editorEl.style.minWidth = editorWidth + "px";
+      editorEl.style.maxWidth = editorWidth + "px";
+    }
+    if (direction === "expand" && win && bounds) {
+      win.setSize(
+        Math.round(bounds.width + restoreWidth),
+        bounds.height
+      );
+    }
     sidebarEl.classList.add(ANIMATION_CLASS);
     document.body.classList.add(ANIMATION_CLASS);
     if (direction === "collapse") {
@@ -267,46 +276,21 @@ var SwipeSidebarPlugin = class extends import_obsidian2.Plugin {
     } else {
       leftSplit.expand();
     }
-    if (win && bounds) {
-      const startWindowWidth = bounds.width;
-      const startTime = performance.now();
-      let rafId;
-      const syncFrame = () => {
-        const elapsed = performance.now() - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-        const eased = easeStandard(progress);
-        let targetWidth;
-        if (direction === "collapse") {
-          const sidebarDelta = originalSidebarWidth * eased;
-          targetWidth = startWindowWidth - sidebarDelta;
-        } else {
-          const sidebarCurrent = restoreWidth * eased;
-          targetWidth = startWindowWidth + sidebarCurrent;
-        }
-        win.setSize(
-          Math.round(targetWidth),
-          bounds.height
-        );
-        if (progress < 1 && this.animating) {
-          rafId = requestAnimationFrame(syncFrame);
-        }
-      };
-      rafId = requestAnimationFrame(syncFrame);
-      sidebarEl.addEventListener(
-        "transitionend",
-        () => cancelAnimationFrame(rafId),
-        { once: true }
-      );
-    }
     const safetyTimeout = duration + 100;
     const cleanup = () => {
+      if (direction === "collapse" && win && bounds) {
+        win.setSize(
+          Math.round(bounds.width - originalSidebarWidth),
+          bounds.height
+        );
+      }
+      if (editorEl) {
+        editorEl.style.minWidth = "";
+        editorEl.style.maxWidth = "";
+      }
       sidebarEl.classList.remove(ANIMATION_CLASS);
       document.body.classList.remove(ANIMATION_CLASS);
       this.animating = false;
-      if (win && bounds) {
-        const finalWidth = direction === "collapse" ? bounds.width - originalSidebarWidth : bounds.width + restoreWidth;
-        win.setSize(Math.round(finalWidth), bounds.height);
-      }
     };
     let cleaned = false;
     const onTransitionEnd = () => {
@@ -328,6 +312,11 @@ var SwipeSidebarPlugin = class extends import_obsidian2.Plugin {
   getLeftSplitEl() {
     return document.querySelector(
       ".workspace-split.mod-left-split"
+    );
+  }
+  getEditorEl() {
+    return document.querySelector(
+      ".workspace-split.mod-root"
     );
   }
 };
